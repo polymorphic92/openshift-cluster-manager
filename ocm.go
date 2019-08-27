@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/viper"
@@ -77,6 +79,15 @@ func main() {
 		switchProject(project)
 	}
 
+	osToken := openshiftToken(cluster["endpoint"])
+
+	if osToken != "" {
+		fmt.Printf("Found Token for: %s\n", cluster["endpoint"])
+
+		loginStatus := registryLogin(cluster, osToken)
+		fmt.Printf("Docker Login Status: %v\n", loginStatus)
+
+	}
 }
 
 func clusterLogin(cluster map[string]string, password string) bool {
@@ -101,4 +112,54 @@ func switchProject(project string) {
 		log.Fatalf("failed running oc project %s\n", err)
 	}
 	fmt.Printf("Switched to %v\n", project)
+}
+
+func openshiftToken(endpoint string) string {
+
+	type openshiftConfig struct {
+		Users []struct {
+			Name string
+			User map[string]string
+		}
+	}
+
+	args := [5]string{"oc", "config", "view", "-o", "json"}
+	out, err := exec.Command(args[0], args[1:5]...).Output()
+	if err != nil {
+		log.Fatalf("failed  getting openshift configwith %s\n", err)
+	}
+
+	osConfig := openshiftConfig{}
+
+	jsonErr := json.Unmarshal(out, &osConfig)
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	for _, item := range osConfig.Users {
+		if strings.Contains(item.Name, strings.ReplaceAll(endpoint, ".", "-")) {
+			if token, ok := item.User["token"]; ok {
+				return token
+			}
+		}
+	}
+	return ""
+
+}
+
+func registryLogin(cluster map[string]string, password string) bool {
+
+	cmd := [7]string{"docker", "login", cluster["docker-registry"], "-u", cluster["user"], "-p", password}
+	res, err := exec.Command(cmd[0], cmd[1:7]...).Output()
+	if err != nil {
+		log.Fatalf("docker login for %s falied:\n\n%s", cluster["endpoint"], res)
+	}
+
+	fmt.Printf("Docker login RES: %v\v%v\n", cmd, res)
+
+	if res != nil {
+		return true
+	}
+
+	return false
 }
