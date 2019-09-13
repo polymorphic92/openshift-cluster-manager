@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -44,7 +45,12 @@ func main() {
 			Options: []string{"Yes", "No"},
 			Default: "Yes",
 		}
-		survey.AskOne(defaultPrompt, &selectedDefault)
+		surveyError := survey.AskOne(defaultPrompt, &selectedDefault)
+
+		if surveyError != nil {
+			os.Exit(0)
+
+		}
 		// the option -q uses the default automagically
 	}
 	// cluster prompt if select default is no or no default option
@@ -58,7 +64,11 @@ func main() {
 			Message: "Choose a cluster",
 			Options: clusters,
 		}
-		survey.AskOne(clusterPrompt, &selectedCluster)
+		surveyError := survey.AskOne(clusterPrompt, &selectedCluster)
+		if surveyError != nil {
+			os.Exit(0)
+
+		}
 		fmt.Printf("Cluster selected: %s\n", selectedCluster)
 
 		cluster = config.Clusters[selectedCluster]
@@ -68,8 +78,11 @@ func main() {
 	passPrompt := &survey.Password{
 		Message: "password",
 	}
-	survey.AskOne(passPrompt, &clusterPassword)
+	passPromptError := survey.AskOne(passPrompt, &clusterPassword)
+	if passPromptError != nil {
+		os.Exit(0)
 
+	}
 	// fmt.Println(reflect.TypeOf(cluster))
 	if clusterLogin(cluster, clusterPassword) {
 		fmt.Printf("%s Cluster Login succeeded!!\n", selectedCluster)
@@ -154,8 +167,6 @@ func registryLogin(cluster map[string]string, password string) bool {
 	if err != nil {
 		log.Fatalf("docker login for %s falied:\n\n%s", cluster["endpoint"], res)
 	}
-
-	fmt.Printf("Docker login RES: %v\v%v\n", cmd, res)
 
 	if res != nil {
 		return true
