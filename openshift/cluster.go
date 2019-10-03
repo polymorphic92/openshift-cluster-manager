@@ -3,7 +3,9 @@ package openshift
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os/exec"
 	"strings"
 )
@@ -28,15 +30,46 @@ func Login(cluster map[string]string, password string) bool {
 	return false
 }
 
-// Project to switch to
-func Project(project string) {
-	args := [5]string{"oc", "project", project}
-	_, err := exec.Command(args[0], args[1:3]...).Output()
+// Projects  fetch projects of endpoint
+func Projects(endpoint string) []string {
+
+	req, err := http.NewRequest("GET", "https://"+endpoint+"/apis/project.openshift.io/v1/projects", nil)
+	req.Header.Add("Authorization", "Bearer "+Token(endpoint))
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatalf("failed running oc project %s\n", err)
-		// if login error call Login
+		log.Println("Error on response.\n[ERROU] -", err)
 	}
-	fmt.Printf("Switched to %v\n", project)
+
+	type projects struct {
+		Items []struct {
+			Metadata struct {
+				Name string
+			}
+		}
+	}
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	fetchedProjects := projects{}
+
+	jsonErr := json.Unmarshal(body, &fetchedProjects)
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	options := make([]string, len(fetchedProjects.Items))
+	for index, project := range fetchedProjects.Items {
+
+		options[index] = project.Metadata.Name
+	}
+
+	return options
+
 }
 
 // Token of the sigined in user
@@ -63,7 +96,7 @@ func Token(endpoint string) string {
 	}
 
 	for _, item := range osConfig.Users {
-		if strings.Contains(item.Name, strings.ReplaceAll(endpoint, ".", "-")) {
+		if strings.Contains(item.Name, convertURL(endpoint)) {
 			if token, ok := item.User["token"]; ok {
 				return token
 			}
@@ -71,4 +104,40 @@ func Token(endpoint string) string {
 	}
 	return ""
 
+}
+
+//SetContext foo
+func SetContext(project string, endpoint string, user string) {
+
+	context := project + "/" + convertURL(endpoint) + ":443/" + user
+	args := [5]string{"oc", "config", "use-context", context}
+
+	_, err := exec.Command(args[0], args[1:4]...).Output()
+	if err != nil {
+		log.Fatalf("failed running oc  %s\n", err)
+	}
+	fmt.Printf("Switched to %v\n", context)
+
+}
+
+func checkLogin(endpoint string, token string) bool {
+
+	req, err := http.NewRequest("GET", "https://"+endpoint+":443/api/v1/namespaces", nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error on response.\n[ERROU] -", err)
+	}
+
+	if resp.Status == "200" {
+		return true
+	}
+
+	return false
+}
+
+func convertURL(url string) string {
+	return strings.ReplaceAll(url, ".", "-")
 }
