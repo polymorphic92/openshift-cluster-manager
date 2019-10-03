@@ -34,6 +34,7 @@ func Project(project string) {
 	_, err := exec.Command(args[0], args[1:3]...).Output()
 	if err != nil {
 		log.Fatalf("failed running oc project %s\n", err)
+		// if login error call Login
 	}
 	fmt.Printf("Switched to %v\n", project)
 }
